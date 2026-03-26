@@ -1,0 +1,79 @@
+name: Release Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          # macOS
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: americano-macos-x86_64
+            binary: americano
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: americano-macos-arm64
+            binary: americano
+
+          # Linux (musl for static, no glibc dependency)
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: americano-linux-x86_64
+            binary: americano
+
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            artifact: americano-linux-arm64
+            binary: americano
+
+          # Windows
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: americano-windows-x86_64
+            binary: americano.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl tools (Linux only)
+        if: contains(matrix.os, 'ubuntu')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cp target/${{ matrix.target }}/release/${{ matrix.binary }} artifacts/
+          cd artifacts
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            zip -9 ../${{ matrix.artifact }}.zip ${{ matrix.binary }}
+          else
+            tar -czf ../${{ matrix.artifact }}.tar.gz ${{ matrix.binary }}
+          fi
+
+      - name: Upload artifact to release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
