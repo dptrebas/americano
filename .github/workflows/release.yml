@@ -10,18 +10,13 @@ jobs:
     strategy:
       matrix:
         include:
-          # macOS
+          # macOS Universal (Apple Silicon + Intel)
           - os: macos-latest
-            target: x86_64-apple-darwin
-            artifact: americano-macos-x86_64
+            target: universal
+            artifact: americano-macos-universal
             binary: americano
 
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact: americano-macos-arm64
-            binary: americano
-
-          # Linux (musl for static, no glibc dependency)
+          # Linux (static musl builds - no glibc dependency)
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             artifact: americano-linux-x86_64
@@ -29,7 +24,7 @@ jobs:
 
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
-            artifact: americano-linux-arm64
+            artifact: americano-linux-aarch64
             binary: americano
 
           # Windows
@@ -47,20 +42,35 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.target != 'universal' && matrix.target || '' }}
 
       - name: Install musl tools (Linux only)
         if: contains(matrix.os, 'ubuntu')
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      - name: Build release binary
+      - name: Build macOS Universal Binary
+        if: matrix.target == 'universal'
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          lipo -create -output ${{ matrix.binary }} \
+            target/aarch64-apple-darwin/release/americano \
+            target/x86_64-apple-darwin/release/americano
+
+      - name: Build for other platforms
+        if: matrix.target != 'universal'
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Prepare artifact
         shell: bash
         run: |
           mkdir -p artifacts
-          cp target/${{ matrix.target }}/release/${{ matrix.binary }} artifacts/
+          if [[ "${{ matrix.target }}" == "universal" ]]; then
+            cp ${{ matrix.binary }} artifacts/
+          else
+            cp target/${{ matrix.target }}/release/${{ matrix.binary }} artifacts/
+          fi
           cd artifacts
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             zip -9 ../${{ matrix.artifact }}.zip ${{ matrix.binary }}
@@ -68,7 +78,7 @@ jobs:
             tar -czf ../${{ matrix.artifact }}.tar.gz ${{ matrix.binary }}
           fi
 
-      - name: Upload artifact to release
+      - name: Upload binaries to release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
