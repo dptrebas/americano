@@ -1,0 +1,17 @@
+[package]
+name = "americano"
+version = "0.1.0"
+edition = "2024"
+description = "Cross-platform CLI to keep your machine awake — part of NautilOS AI Agentic Operating System"
+license = "Apache-2.0"
+repository = "https://github.com/dptrebas/americano"
+readme = "README.md"
+keywords = ["cli", "keep-awake", "caffeinate", "prevent-sleep", "nautilos"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+
+# Only needed for Windows
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = ["Win32_System_Power"] }
